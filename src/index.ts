@@ -1,61 +1,88 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import exp from "constants";
+import { reactive } from "vue";
 
-const cache = new Map<string, any>();
+interface RequestOptions {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  headers?: Record<string, string>;
+  body?: unknown;
+}
 
-export function useLazyFetch<T>(
-  url: string,
-  options: {
-    cache?: boolean;
-    refetchOnFocus?: boolean;
-    interval?: number;
-  } = {}
-) {
-  const data = ref<T | null>();
-  const isLoading = ref<boolean>(false);
-  const error = ref<Error | null>(null);
+interface RequestState<T> {
+  loading?: boolean;
+  error?: Error | null;
+  data?: T | null;
+}
 
-  async function fetchData() {
-    isLoading.value = true;
+class Vuexi {
+  private baseURL: string;
+
+  constructor(baseURL: string = "") {
+    this.baseURL = baseURL;
+  }
+
+  async request<T>(url?: string, options: RequestOptions = { method: "GET" }) {
+    const fullURL = url ? this.baseURL + url : this.baseURL;
 
     try {
-      if (options.cache && cache.has(url)) {
-        data.value = cache.get(url);
-      } else {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Loading error");
-        const result = await response.json();
-        data.value = result;
+      const response = await fetch(fullURL, {
+        method: options.method,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers,
+        },
+        body: options.body ? JSON.stringify(options.body) : null,
+      });
+      if (!response.ok) throw new Error(`Vuexi error: ${response.status}`);
 
-        cache.set(url, result);
+      return await response.json();
+    } catch (error) {
+      console.error(`Request failed: ${error}`);
+      throw error;
+    }
+  }
+
+  useRequest<T>(url?: string, options: RequestOptions = {}) {
+    const state = reactive<RequestState<T>>({
+      loading: false,
+      error: null,
+      data: null,
+    });
+
+    const execute = async () => {
+      state.loading = true;
+      try {
+        const result = await this.request<T>(url, options);
+        state.data = result;
+      } catch (error) {
+        state.error = error as Error;
+      } finally {
+        state.loading = false;
       }
-    } catch (err) {
-      error.value = err as Error;
-    } finally {
-      isLoading.value = false;
-    }
+    };
+
+    execute();
+
+    return {
+      ...state,
+      execute,
+    };
   }
 
-  function handleVisibilityChange() {
-    if (document.visibilityState === "visible") {
-      fetchData();
-    }
+  get<T>(url?: string, headers?: Record<string, string>) {
+    return this.useRequest<T>(url, { method: "GET", headers });
   }
 
-  onMounted(() => {
-    fetchData();
-    if (options.refetchOnFocus) {
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-    }
-  });
-
-  onUnmounted(() => {
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-  });
-
-  if (options.interval) {
-    const intervalId = setInterval(fetchData, options.interval);
-    onUnmounted(() => intervalId && clearInterval(intervalId));
+  post<T>(url: string, body: any, headers?: Record<string, string>) {
+    return this.request<T>(url, { method: "POST", body, headers });
   }
 
-  return { data, isLoading, error, refresh: fetchData };
+  put<T>(url: string, body: any, headers?: Record<string, string>) {
+    return this.request<T>(url, { method: "PUT", body, headers });
+  }
+
+  delete<T>(url: string, headers?: Record<string, string>) {
+    return this.request<T>(url, { method: "DELETE", headers });
+  }
 }
+
+export { Vuexi };
