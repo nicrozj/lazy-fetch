@@ -13,7 +13,7 @@ interface RequestState<T> {
   data: T | null;
 }
 
-class Vuexi {
+export class VueRequest {
   private baseURL: string;
 
   constructor(baseURL: string = "") {
@@ -146,5 +146,3 @@ class Vuexi {
     return this.useRequest<T>(url, { method: "PATCH", body, headers });
   }
 }
-
-export { Vuexi };
